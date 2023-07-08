@@ -1,0 +1,352 @@
+(**-------------------TYPE--------------------------------------- **)
+type ope = PLUS | MOINS| FOIS| DIV ;;
+type tree =
+  CST of int
+|VAR of string
+|NEG of tree
+| OP of ope *tree * tree
+;;
+
+type pile = EMPTY | ACC of pile * tree  ;;
+
+(**----------------------------------------------------------------**)
+
+open List;;
+
+(**----------------------------------------------------------------------------
+  |                                                                           |
+  |                             EXERCISE 1                                    |
+  |                                                                           |
+  -----------------------------------------------------------------------------**)
+
+
+(* regarde pour chaque caractère si c'est un chiffre, renvoie true si c'est une constante sinon renvoie false  *) 
+let rec is_constant( c : string  ) : bool =
+  String.fold_left (fun a c -> if (c>='0' && c<='9'&& a) then true else false) true c ;;
+
+
+(* Transforme un string en CST ou en VAR *)
+let int_var_to_tree s = if is_constant(s) then CST(int_of_string(s)) else VAR(s);;
+
+
+(* renvoie true si c est un operande sinon renvoie false  /!\ le negatif est considéré comme un symbol /!\ *)
+let is_symb ( c : string ): bool = c = "*" || c = "/" || c = "+" || c = "-" || c="~" ;;
+
+
+(* transforme un string en OPE *)
+let string_to_ope ( str : string ) : ope =
+  match str with
+  |"*" -> FOIS
+  |"/" -> DIV
+  |"+" -> PLUS
+  |"-" -> MOINS
+  | _ -> failwith"error not operator ( by STRING_TO_OPE )"
+;;
+
+
+(* transforme un OPE en string *) 
+let ope_to_string ( op : ope ) : string =
+  match op with
+  |FOIS -> "*"
+  |DIV -> "/"
+  |PLUS -> "+"
+  |MOINS -> "-"
+;;
+
+
+(* retourne le premier element de la pile *)
+let first_pile p = match p with
+    ACC(_,t) -> t
+   | _  -> failwith "error pile empty ( BY FIRST_PILE ) "  
+;;
+
+
+(* retorune le dernier element de la pile *)
+let rem_pile p = match p with
+    ACC(pil,t) -> pil
+
+  | EMPTY -> failwith"error pile empty ( BY REM_PILE ) "
+;;
+
+(* fonction de l'exercice 1 : on parcours chaque element si *)
+let pars( l : string list ) : tree =
+  first_pile(
+      List.fold_left(fun a c
+                     -> if not(is_symb(c)) (* ce n'est pas un symbole alors on ajoute l'element en tete de pile *)
+                        then ACC(a,int_var_to_tree(c) ) 
+                        else if ( c="~" ) (* c'est un symbole mais c'est le moins negatif alors on ajoute en tete de la pile le noeud NEG avec l'element de la tete de pile *) 
+                        then ACC(rem_pile(a),NEG(first_pile(a)))  (* en supprimant l'element en tete de pile ( celui qu'on a pris ) *)
+                        else ACC(rem_pile(rem_pile(a)), OP( string_to_ope(c) , first_pile(rem_pile(a)),  first_pile(a)  ) ) 
+        )                       (* sinon c'est une operation alors on prend les deux premiers element de la pile et on ajoute en tete le noeud crée  *)
+        EMPTY (* initialisation de la pile *)
+        l (* liste a parcourir *)
+    )
+;;
+
+
+(**----------------------------------------------------------------------------
+  |                                                                           |
+  |                             EXERCISE 2                                    |
+  |                                                                           |
+  -----------------------------------------------------------------------------**)
+
+(* TOUT les cas possible de simplification pour le plus *)
+let plus ( left , right : tree * tree ) : tree =
+  match left , right with
+  |CST(g) , CST(d) -> CST ( g+d)
+
+  |NEG(CST(g)) , CST(d) -> if ( (d -g) < 0 )
+                           then NEG(CST(g-d))
+                           else CST(d-g)
+
+  |CST(g) , NEG(CST(d)) -> if ( (g -d) < 0 )
+                           then NEG(CST(d-g))
+                           else CST(g-d)
+
+  |NEG(CST(g)) ,  NEG(CST(d)) -> NEG(CST( (g+d)))
+                                                              
+  |VAR(g) ,  CST(d)
+  |NEG(VAR(g)) ,  CST(d)
+  |VAR(g) ,  NEG(CST(d))
+  |NEG(VAR(g)) ,  NEG(CST(d)) -> if ( d  = 0 ) then left  else OP(PLUS , left , right)
+                               
+  |CST(g) ,  VAR(d)  
+  |NEG(CST(g)) ,  VAR(d)
+  |CST(g) ,  NEG(VAR(d))
+  |NEG(CST(g)) ,  NEG(VAR(d)) ->  if ( g = 0 ) then right else OP(PLUS , left , right)                   
+                                         
+  |VAR(g) , VAR(d)  -> if (d = g )
+                       then  OP( FOIS , CST(2) , right )
+                       else OP ( PLUS , left , right )
+
+  |NEG(VAR(g)) , NEG(VAR(d)) -> if ( d = g )
+                               then OP( FOIS , CST(2) , right )
+                               else OP ( PLUS , left , right )
+  |NEG(VAR(g))  , VAR(d)
+  |(VAR(g))  , NEG(VAR(d)) -> if ( d =g )
+                            then CST(0)
+                            else OP ( PLUS , left , right )
+
+  | _ , _ ->  OP ( PLUS, left , right )
+                                          
+;;
+
+
+(* tous les cas de simplification pour le moins *)
+let minus( left , right : tree * tree ) : tree =
+  match left,right with
+    CST(g) , CST(d) -> if( g - d < 0 )
+                       then NEG(CST(d-g) )
+                       else CST(g-d)
+  | CST(g) , VAR(d) -> OP(MOINS , left , right )
+  | VAR(g) , CST(d) -> if (d==0)
+                       then VAR(g)
+                       else OP(MOINS , left , right)
+  |VAR(g) , VAR(d) -> if ( g = d )
+                      then CST(0)
+                      else OP(MOINS , left , right )
+
+
+  | NEG(g) , NEG(d) -> plus(NEG(g) , d)
+                     
+  | NEG(g) , d -> NEG(plus(g,d))
+  | g , NEG(d) -> plus(g,d)
+  | _ , _->  OP ( MOINS, left , right )
+
+;;
+
+(* tous les cas de simplification pour la division *)
+
+let divide ( left , right : tree * tree ) : tree =
+  if (right = CST(0) )
+  then failwith"erreur division par 0"
+  else if( left = CST(0) )
+  then CST(0)
+  else
+    match left, right with
+    |CST(g) , CST(d)| NEG(CST(g)) ,  NEG(CST(d))  ->if(g=d)
+                                                     then CST(1)
+                                                     else CST(g/d)             
+    |NEG(CST(g)) , CST(d) -> NEG(CST(g/d))
+    |CST(g) , NEG(CST(d)) -> NEG(CST(g/d))
+
+                           
+    |VAR(g) ,  CST(d) 
+    |NEG(VAR(g)) ,  CST(d) 
+    |VAR(g) ,  NEG(CST(d)) 
+    |NEG(VAR(g)) ,  NEG(CST(d))  -> OP(DIV,VAR(g),CST(d))
+                                 
+      
+    |CST(g) ,  VAR(d)  
+    |NEG(CST(g)) ,  VAR(d) 
+    |CST(g) ,  NEG(VAR(d)) -> OP(DIV,left,right)
+    |NEG(CST(g)) ,  NEG(VAR(d)) ->   OP(DIV,CST(g),VAR(d))
+
+    |VAR(g) , VAR(d)  ->if(g=d)
+                         then CST(1)
+                        else OP(DIV,left,right)
+
+    |NEG(VAR(g)) , NEG(VAR(d)) -> if ( g=d)
+                                   then CST(1)
+                                  else OP(DIV,VAR(g) , VAR(d) )
+
+    |NEG(VAR(g))  , VAR(d)
+    |(VAR(g))  , NEG(VAR(d)) -> if(g=d)
+                                 then NEG(CST(1))
+                                else (OP(DIV,NEG(VAR(g)),VAR(d)))
+
+    | _ , _ ->  OP ( DIV, left , right )
+
+;;    
+
+
+(* tout les cas de simplification pour la mutliplication *) 
+let times ( left , right : tree * tree ) : tree =
+  match left , right with
+  |CST(g) , CST(d)  | NEG(CST(g)) ,  NEG(CST(d))  -> CST ( g*d)
+  |NEG(CST(g)) , CST(d) -> NEG(CST(d*g))
+  |CST(g) , NEG(CST(d)) -> NEG(CST(g*d))
+                         
+  |NEG(VAR(g)) ,  CST(d) -> if ( d  = 0 ) then CST(0)
+                            else if ( d = 1) then NEG(VAR(g))
+                            else (OP(FOIS , NEG(VAR(g)) ,  CST(d)))
+  |VAR(g) ,  NEG(CST(d)) -> if ( d  = 0 ) then CST(0)
+                            else if ( d = 1) then NEG(VAR(g))
+                            else (OP(FOIS , VAR(g) , NEG(CST(d))))
+  |VAR(g) ,  CST(d)
+  |NEG(VAR(g)) ,  NEG(CST(d)) -> if ( d  = 0 ) then  CST(0)
+                                 else if ( d = 1) then VAR(g)
+                                 else OP(FOIS , VAR(g) , CST(d))
+                               
+ 
+  |NEG(CST(g)) ,  VAR(d) -> if ( g = 0 ) then  CST(0)
+                            else if ( g = 1) then NEG(VAR(d))
+                            else (OP(FOIS , NEG(CST(g)) ,  VAR(d)))
+  |CST(g) ,  NEG(VAR(d)) -> if ( g = 0 ) then  CST(0)
+                            else if ( g = 1) then NEG(VAR(d))
+                            else (OP(FOIS , CST(g) , NEG(VAR(d))))
+  |CST(g) ,  VAR(d)  
+  |NEG(CST(g)) ,  NEG(VAR(d)) ->  if ( g = 0 ) then  CST(0)
+                                  else if ( g = 1) then VAR(d)
+                                  else OP(FOIS , CST(g) , VAR(d))
+
+  |NEG(VAR(g)) , NEG(VAR(d))  ->   OP(FOIS,VAR(g),VAR(d))                        
+  |VAR(g) , VAR(d)
+  |NEG(VAR(g))  , VAR(d)
+  |(VAR(g))  , NEG(VAR(d)) ->  OP ( FOIS, left , right )
+  | _ , _ ->  OP ( FOIS, left , right )                                                                
+;;                                                             
+
+
+
+(* renvoie true si ce n'est pas une operation sinon renvoie false *)
+let tree_symb( t : tree ) : bool =
+  match t with
+    CST(x)
+  | NEG(CST(x))->true
+  | NEG(VAR(x))
+  |VAR(x) -> true
+  | _ -> false
+;;
+
+
+(* renvoie true si c'est une feuille sinon renvoie false     feuille -> fils gauche et droite n'ont pas d'operation *)
+let is_leaf ( t : tree ) : bool = 
+  match t with
+    OP( _ ,g, d )-> tree_symb(g) && tree_symb(d)
+  | _ -> false 
+;;
+
+
+(* simplifie l'arbre si des calcules sont possbiles *)
+let rec simp( t : tree ) : tree =
+  match t with
+    CST(n)->CST(n)
+  | NEG(x)->NEG(simp(x))
+  | VAR(v)->VAR(v)
+
+  | OP( MOINS ,  g , d ) -> minus(simp(g),simp(d))                           
+
+  | OP( PLUS ,  g , d ) -> plus(simp(g),simp(d))
+                           
+  | OP( DIV ,  g , d ) -> divide(simp(g),simp(d))
+                
+  | OP( FOIS,  g , d ) -> times(simp(g),simp(d))
+                          
+;;
+
+(**----------------------------------------------------------------------------
+  |                                                                           |
+  |                             EXERCISE 3                                    |
+  |                                                                           |
+  -----------------------------------------------------------------------------**)
+
+
+(* si c'est une operation renvoie true sinon renvoie false *)
+let is_ope( t : tree ) : bool =
+  match t with
+    OP( _ , _ , _ ) -> true 
+  | _ -> false
+;;
+
+
+(* transforme un tree en string *)
+let tree_to_string ( t : tree ) : string =
+  match t with
+    
+    OP( p , _ , _ ) -> ope_to_string(p)
+
+   |CST(x) -> string_of_int(x)
+
+   | VAR(x) -> x
+
+   | NEG(CST(x)) -> string_of_int(-1*x)
+
+   | NEG(VAR(x)) -> "-"^x
+
+   | _ -> failwith"error tree_to_string"
+;;
+
+
+(* on definis les regles pour les priorités de calcule renvoie true si on met des paranthèse sinon renvoie false *) 
+let rule( op1 , op2 : string * string  ) : bool  =
+  match op1 , op2 with
+    "/" , "+"
+  | "/" , "-"
+  | "*" , "+"
+  | "*" , "-" -> true 
+  | _ -> false
+;;
+
+
+(* affiche un arbre en expression  *)
+let rec display( t : tree ) : string =
+  match t with
+    CST(x) -> string_of_int(x)
+
+  | VAR(x) -> x
+
+  | NEG(x) -> "-("^display(x)^")"
+
+  | OP( ope , left , right )
+
+    -> let str : string = ope_to_string(ope) in 
+       if ( is_leaf(t) )
+       then display(left)^str^display(right)
+
+       else if (rule(str,tree_to_string(left)) && rule(str,tree_to_string(right)) )
+       then "("^display(left)^")"^str^"("^display(right)^")"
+
+       else if ( rule(str,tree_to_string(left)) && not(rule(str,tree_to_string(right))) )
+       then "("^display(left)^")"^str^display(right)
+
+       else if ( not(rule(str,tree_to_string(left))) && rule(str,tree_to_string(right)) )
+       then display(left)^str^"("^display(right)^")"
+
+       else display(left)^str^display(right)                                                                 
+;;
+
+
+
+
+
